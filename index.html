@@ -29,7 +29,7 @@ button{cursor:pointer}
 .btn.ghost{background:transparent}
 .btn.danger{color:#c4123f;border-color:currentColor;background:transparent}
 .btn:disabled{opacity:.45;cursor:not-allowed}
-.setup{display:grid;grid-template-columns:minmax(0,1.2fr) minmax(0,1fr) minmax(0,1fr) auto auto;gap:12px;background:var(--panel);border:1px solid var(--line);border-radius:0;padding:14px;margin-bottom:18px}
+.setup{display:grid;grid-template-columns:minmax(0,1.2fr) minmax(0,1fr) minmax(0,1fr) auto;gap:12px;background:var(--panel);border:1px solid var(--line);border-radius:0;padding:14px;margin-bottom:18px}
 .f{display:flex;flex-direction:column;gap:4px}
 .f span{font-size:13px;color:var(--mute)}
 .f input{min-height:44px;border:1px solid var(--line);border-radius:0;background:var(--field);padding:0 12px;font-size:16px;width:100%}
@@ -49,7 +49,10 @@ button{cursor:pointer}
 .retry{min-height:36px;padding:0 12px;border:1px solid currentColor;background:transparent;color:inherit;border-radius:0;font-size:14px;white-space:nowrap}
 .saveinfo .retry{margin-left:8px;color:#c4123f}
 .hint{grid-column:1/-1;font-size:13px;color:var(--mute);margin:-4px 0 0}
-.saveinfo{font-size:13px;color:var(--mute);white-space:nowrap;min-height:44px;display:flex;align-items:center}
+.foot{word-break:keep-all;margin-top:22px;padding:18px 0 0;border-top:1px solid var(--line);color:var(--mute);font-size:14px;line-height:1.6}
+.foot p{margin:0}
+.saveinfo{color:var(--ink);font-weight:700;font-size:15px;display:flex;align-items:center;flex-wrap:wrap;gap:4px;margin-bottom:4px!important}
+.foot .note{font-size:13px;margin-top:2px}
 /* board */
 .board{background:var(--paper);color:#322e2e;padding:clamp(18px,4vw,48px) clamp(14px,4vw,44px) clamp(24px,4vw,48px);border-radius:0;box-shadow:0 1px 0 rgba(0,0,0,.06),0 18px 40px -24px rgba(0,0,0,.35)}
 .bhead{display:flex;justify-content:space-between;align-items:baseline;gap:12px 24px;flex-wrap:wrap;margin-bottom:clamp(14px,2.4vw,30px)}
@@ -148,13 +151,17 @@ button{cursor:pointer}
   <label class="f"><span>시작일</span><input type="date" id="iStart"></label>
   <label class="f"><span>종료일 (최대 5일)</span><input type="date" id="iEnd"></label>
   <div class="f"><span>시간 박스 색</span><div class="sw" id="sw"></div></div>
-  <div class="f"><span>저장</span><span class="saveinfo" id="saveInfo">불러오는 중…</span></div>
  </form>
  <section class="board" id="board" aria-label="상영시간표 미리보기">
   <div class="bhead"><div id="bTitle"></div><div id="bRange"></div></div>
   <div class="errbar" id="errbar" role="alert" hidden><span id="errMsg"></span><button class="retry" id="errRetry">다시 시도</button></div>
   <div class="cols" id="cols"></div>
  </section>
+ <footer class="foot">
+  <p class="saveinfo" id="saveInfo" role="status">이 기기에 자동 저장돼요.</p>
+  <p id="footDesc">다시 방문해 시간표를 수정하거나, 다 본 영화를 체크할 수 있어요.</p>
+  <p class="note" id="footNote">저장된 내용은 다른 기기와 공유되지 않으며, 브라우저 데이터를 삭제하면 모두 사라져요 ㅠㅠ</p>
+ </footer>
 </div>
 
 <div class="scrim" id="scrim"></div>
@@ -179,7 +186,7 @@ const uid=()=>Math.random().toString(36).slice(2,10);
 
 const LS="myShowtimes.v1",LSI="myShowtimes.img.v1";
 let S,IMG={},justAdded=null,loading=true,remotePending=false,uploading=null;
-function fresh(){const t=todayISO();return{badge:"#000000",title:(new Date().getMonth()+1)+"월 상영시간표",start:t,days:5,gap:10,entries:[],updated:0}}
+function fresh(){const t=todayISO();return{badge:"#000000",title:"상영시간표",start:t,days:5,gap:10,entries:[],updated:0}}
 try{S=JSON.parse(localStorage.getItem(LS))||fresh()}catch(e){S=fresh()}
 try{IMG=JSON.parse(localStorage.getItem(LSI))||{}}catch(e){IMG={}}
 /* images live in IndexedDB (localStorage is too small for pictures) */
@@ -284,34 +291,34 @@ function showErr(msg,fn){$("errMsg").textContent=msg;$("errbar").hidden=false;$(
 function hideErr(){$("errbar").hidden=true}
 function persistLocal(){try{localStorage.setItem(LS,JSON.stringify(S));return true}catch(e){return false}}
 function saveFail(msg,fn){$("saveInfo").innerHTML="";$("saveInfo").append(msg);const b=document.createElement("button");b.className="retry";b.textContent="다시 시도";b.onclick=fn;$("saveInfo").append(b)}
-function changed(){S.updated=Date.now();const ok=persistLocal();render();dirty=true;clearTimeout(saveT);saveT=setTimeout(pushRemote,700);if(!ok&&!db){saveFail("저장하지 못했어요",()=>{if(persistLocal())setInfo("내 기기에 저장돼요")});return}setInfo(db?"저장 중…":"내 기기에 저장돼요")}
-function setInfo(t){$("saveInfo").textContent=t}
+function changed(){S.updated=Date.now();const ok=persistLocal();render();dirty=true;clearTimeout(saveT);saveT=setTimeout(pushRemote,700);if(!ok&&!db){saveFail("저장하지 못했어요",()=>{if(persistLocal())setInfo("이 기기에 자동 저장돼요.")});return}setInfo(db?"저장 중…":"이 기기에 자동 저장돼요.")}
+function setInfo(t){$("saveInfo").textContent=t;$("footNote").hidden=!!db}
 const stateRef=()=>db.doc("data/users/"+me+"/schedule");
 let writing=false;
 async function pushRemote(){
  if(!db||!dirty)return;if(writing){saveT=setTimeout(pushRemote,500);return}
  writing=true;dirty=false;
- try{await stateRef().set(JSON.parse(JSON.stringify(S)));setInfo("내 계정에 저장돼요")}
- catch(e){writing=false;if(e&&e.code==="invalid_argument"){db=null;setInfo("내 기기에 저장돼요");return}dirty=true;saveFail("계정에 저장하지 못했어요",()=>{setInfo("저장 중…");pushRemote()});return}
+ try{await stateRef().set(JSON.parse(JSON.stringify(S)));setInfo("내 계정에 자동 저장돼요.")}
+ catch(e){writing=false;if(e&&e.code==="invalid_argument"){db=null;setInfo("이 기기에 자동 저장돼요.");return}dirty=true;saveFail("계정에 저장하지 못했어요",()=>{setInfo("저장 중…");pushRemote()});return}
  writing=false;
 }
 async function putImg(id,data){await idbPut(id,data);if(!db)return;try{await stateRef().collection("img").doc(id).set({d:data})}catch(e){}}
 async function delImg(id){delete IMG[id];idbDel(id);if(db)try{await stateRef().collection("img").doc(id).delete()}catch(e){}}
 async function initRemote(){
- if(!window.claude||!claude.use){setInfo("내 기기에 저장돼요");return}
- const timer=setTimeout(()=>setInfo("내 기기에 저장돼요"),10000);
+ if(!window.claude||!claude.use){setInfo("이 기기에 자동 저장돼요.");return}
+ const timer=setTimeout(()=>setInfo("이 기기에 자동 저장돼요."),10000);
  try{
   const [d,u]=await Promise.all([claude.use("db"),claude.use("user")]);
   me=u&&await u.id();
-  if(!d||!me){clearTimeout(timer);setInfo("내 기기에 저장돼요");return}
+  if(!d||!me){clearTimeout(timer);setInfo("이 기기에 자동 저장돼요.");return}
   db=d;remotePending=true;render();
   let snap;try{snap=await stateRef().get()}finally{remotePending=false}clearTimeout(timer);
   if(snap.exists){const r=snap.data();if((r.updated||0)>(S.updated||0)){S=Object.assign(fresh(),JSON.parse(JSON.stringify(r)))}else if((S.updated||0)>(r.updated||0)){dirty=true;pushRemote()}}
   else if(S.entries.length||S.updated){dirty=true;pushRemote()}
   for(const e of S.entries){if(e.img&&!IMG[e.img]){try{const s=await stateRef().collection("img").doc(e.img).get();if(s.exists){IMG[e.img]=s.data().d;idbPut(e.img,IMG[e.img])}}catch(x){}}
    else if(e.img&&IMG[e.img]&&!snap.exists){putImg(e.img,IMG[e.img])}}
-  persistLocal();render();setInfo("내 계정에 저장돼요");
- }catch(e){clearTimeout(timer);remotePending=false;render();if(db){showErr("계정에 저장된 시간표를 불러오지 못했어요.",()=>{db=null;initRemote()})}db=null;setInfo("내 기기에 저장돼요")}
+  persistLocal();render();setInfo("내 계정에 자동 저장돼요.");
+ }catch(e){clearTimeout(timer);remotePending=false;render();if(db){showErr("계정에 저장된 시간표를 불러오지 못했어요.",()=>{db=null;initRemote()})}db=null;setInfo("이 기기에 자동 저장돼요.")}
 }
 
 /* ---------- toast ---------- */
@@ -547,7 +554,7 @@ $("bExp").onclick=async()=>{
 render();
 function loadImages(){loading=true;render();idbLoad().then(()=>{loading=false;hideErr();render()}).catch(()=>{loading=false;render();showErr("저장된 스틸컷을 불러오지 못했어요.",loadImages)})}
 loadImages();
-setInfo("내 기기에 저장돼요");
+setInfo("이 기기에 자동 저장돼요.");
 initRemote();
 }
 </script>
