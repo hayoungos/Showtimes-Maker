@@ -21,6 +21,7 @@ button{cursor:pointer}
 :focus-visible{outline:2px solid var(--ink);outline-offset:2px}
 .wrap{max-width:1180px;margin:0 auto;padding:16px max(4vw,14px) 80px}
 .bar{display:flex;flex-wrap:wrap;align-items:center;gap:10px 14px;margin-bottom:14px}
+.acts{display:flex;gap:10px}
 .bar h1{font:400 22px/1.2 var(--serif);letter-spacing:-.04em;margin:0;margin-right:auto}
 .stat{font-size:14px;color:var(--mute);white-space:nowrap}
 .stat b{color:var(--ink);font-weight:700}
@@ -82,6 +83,17 @@ button{cursor:pointer}
 .add b{font-size:22px;font-weight:400;line-height:1;color:#000}
 .add small{font-size:12.5px;color:#7b7272}
 .add:hover{outline-color:#000}
+.mnav,.mdots{display:none}
+.dn{position:absolute;top:8px;width:44px;height:44px;border:0;background:none;color:#fff;font:400 34px/1 var(--serif);display:none;place-items:center;padding:0}
+.dn.prev{left:4px}.dn.next{right:4px}
+.dn:disabled{opacity:.25;cursor:default}
+.dn svg{width:20px;height:20px}
+@media(max-width:760px){.day .dn{display:grid}}
+.mdots{gap:6px;align-items:center;margin:-4px 0 12px}
+.mdots button{width:28px;height:28px;padding:0;border:0;background:none;display:grid;place-items:center}
+.mdots button i{display:block;width:10px;height:10px;background:#cfc8c8}
+.mdots button[aria-current=true] i{background:#000;width:22px}
+.mdots span{font-size:13px;color:#6f6868;margin-left:6px}
 /* sheet */
 .scrim{position:fixed;inset:0;background:rgba(10,6,6,.45);display:none;z-index:20}
 .scrim.on{display:block}
@@ -128,8 +140,16 @@ button{cursor:pointer}
  .setup{grid-template-columns:minmax(0,1fr) minmax(0,1fr)}
  .setup .f:first-child{grid-column:1/-1}
  .setup .f:nth-child(4){grid-column:1/-1}
- .cols{display:flex;overflow-x:auto;scroll-snap-type:x mandatory;gap:6px;margin:0 calc(-1*clamp(14px,4vw,44px));padding:0 clamp(14px,4vw,44px) 6px;scrollbar-width:thin}
- .col{flex:0 0 min(76vw,300px);scroll-snap-align:center;min-height:0}
+ .bar{gap:12px}
+ .bar .stat{font-size:13px}
+ .acts{width:100%;gap:8px}
+ .acts .btn{flex:1 1 auto;padding:0 10px;font-size:15px}
+ .cols{display:block;position:relative}
+ .col{display:none;min-height:0}
+ .col.cur{display:flex}
+ .day{position:relative}
+ .mnav{display:flex}
+ .mdots{display:flex}
  .bhead{flex-direction:column;gap:2px}
  .sheet{top:auto;left:0;width:100%;height:min(86vh,720px);border-radius:0}
  .stamp{font-size:30px}
@@ -142,9 +162,11 @@ button{cursor:pointer}
  <div class="bar">
   <h1>상영시간표 만들기</h1>
   <span class="stat" id="prog"></span>
-  <button class="btn ghost" id="bNew">새로 만들기</button>
-  <button class="btn ghost" id="bSet">쉬는 시간 <b id="gapLbl"></b></button>
-  <button class="btn pri" id="bExp">이미지 저장</button>
+  <div class="acts">
+   <button class="btn ghost" id="bNew">새로 만들기</button>
+   <button class="btn ghost" id="bSet">쉬는 시간 <b id="gapLbl"></b></button>
+   <button class="btn pri" id="bExp">이미지 저장</button>
+  </div>
  </div>
  <form class="setup" id="setup" autocomplete="off">
   <label class="f"><span>제목</span><input id="iTitle" maxlength="20"></label>
@@ -155,6 +177,7 @@ button{cursor:pointer}
  <section class="board" id="board" aria-label="상영시간표 미리보기">
   <div class="bhead"><div id="bTitle"></div><div id="bRange"></div></div>
   <div class="errbar" id="errbar" role="alert" hidden><span id="errMsg"></span><button class="retry" id="errRetry">다시 시도</button></div>
+  <div class="mdots" id="mdots" aria-label="날짜 이동"></div>
   <div class="cols" id="cols"></div>
  </section>
  <footer class="foot">
@@ -185,7 +208,7 @@ const iso=d=>d.getFullYear()+"-"+pad(d.getMonth()+1)+"-"+pad(d.getDate());
 const uid=()=>Math.random().toString(36).slice(2,10);
 
 const LS="myShowtimes.v1",LSI="myShowtimes.img.v1";
-let S,IMG={},justAdded=null,loading=true,remotePending=false,uploading=null;
+let mDay=0,S,IMG={},justAdded=null,loading=true,remotePending=false,uploading=null;
 function fresh(){const t=todayISO();return{badge:"#000000",title:"상영시간표",start:t,days:5,gap:10,entries:[],updated:0}}
 try{S=JSON.parse(localStorage.getItem(LS))||fresh()}catch(e){S=fresh()}
 try{IMG=JSON.parse(localStorage.getItem(LSI))||{}}catch(e){IMG={}}
@@ -238,7 +261,7 @@ function find(q){
 }
 
 /* ---------- badge colour ---------- */
-const SW=["#000000","#00cbe1","#e1a100"];
+const SW=["#000000","#00cbe1","#0092cb"];
 const badge=()=>/^#[0-9a-f]{6}$/i.test(S.badge||"")?S.badge:"#000000";
 function badgeInk(){return"#ffffff"}
 function renderSw(){const c=badge();const custom=!SW.includes(c.toLowerCase());
@@ -277,12 +300,14 @@ function render(){
  let h="";
  for(let d=0;d<S.days;d++){
   const L=dayList(d);
-  h+=`<div class="col" data-d="${d}"><div class="day">${dayName(d)}</div>${L.map(cardHTML).join("")}`;
+  h+=`<div class="col${d===mDay?" cur":""}" data-d="${d}"><div class="day"><button class="dn prev" data-nav="-1" aria-label="이전 날짜" ${d===0?"disabled":""}><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="square" stroke-linejoin="miter" aria-hidden="true"><path d="M15 5l-7 7 7 7"/></svg></button>${dayName(d)}<button class="dn next" data-nav="1" aria-label="다음 날짜" ${d===S.days-1?"disabled":""}><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="square" stroke-linejoin="miter" aria-hidden="true"><path d="M9 5l7 7-7 7"/></svg></button></div>${L.map(cardHTML).join("")}`;
   if(remotePending&&!S.entries.length){h+=Array.from({length:d%2?2:3},()=>`<div class="sk-card" aria-hidden="true"><span class="shot sk"></span><span class="sk-line tb"></span><span class="sk-line l1"></span><span class="sk-line l2"></span></div>`).join("")+"</div>";continue}
   if(L.length<5){const t=nextStart(d);h+=`<button class="add" data-act="add" data-d="${d}"><span class="ghost" aria-hidden="true"><i></i><span class="info"><span class="time">00:00</span><span class="t1">-</span><span class="t2">-</span></span></span><span class="lab"><b>+</b>영화 추가<small>${t<1440?"다음 시작 "+hm(t)+"부터":"시작 시간을 골라 추가"}</small></span></button>`}
   h+="</div>";
  }
+ if(mDay>S.days-1)mDay=S.days-1;
  cols.innerHTML=h;justAdded=null;
+ $("mdots").innerHTML=Array.from({length:S.days},(_,d)=>`<button data-go="${d}" aria-label="${dayName(d)}" aria-current="${d===mDay}"><i></i></button>`).join("")+`<span>${mDay+1} / ${S.days}</span>`;
 }
 
 /* ---------- save ---------- */
@@ -433,7 +458,11 @@ async function processImage(f,forId){
 }
 
 /* board clicks */
-$("cols").addEventListener("click",ev=>{
+function goDay(d){d=Math.max(0,Math.min(S.days-1,d));if(d===mDay)return;mDay=d;render()}
+$("mdots").addEventListener("click",e=>{const b=e.target.closest("[data-go]");if(b)goDay(+b.dataset.go)});
+let tx=null,ty=null;$("cols").addEventListener("touchstart",e=>{tx=e.touches[0].clientX;ty=e.touches[0].clientY},{passive:true});
+$("cols").addEventListener("touchend",e=>{if(tx==null)return;const dx=e.changedTouches[0].clientX-tx,dy=e.changedTouches[0].clientY-ty;tx=null;if(Math.abs(dx)>50&&Math.abs(dx)>Math.abs(dy)*1.5)goDay(mDay+(dx<0?1:-1))},{passive:true});
+$("cols").addEventListener("click",ev=>{const nv=ev.target.closest("[data-nav]");if(nv){goDay(mDay+ +nv.dataset.nav);return}
  const b=ev.target.closest("[data-act]");if(!b)return;
  const card=b.closest(".card"),id=card&&card.dataset.id;
  if(b.dataset.act==="add")openAdd(+b.dataset.d);
