@@ -1,0 +1,555 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>나만의 상영시간표</title>
+<style>
+@font-face{font-family:"ChosunNM";src:url("fonts/ChosunKm.woff") format("woff");font-weight:400;font-display:swap}
+@font-face{font-family:"ChosunGu";src:url("fonts/ChosunGu.woff") format("woff");font-weight:400;font-display:swap}
+/* VOICE: a quiet cinema-programme desk, precise and calm
+   IDEA: the printed weekly showtime board pinned in an arthouse lobby
+   PICTURE: the board itself, editable in place, exactly as it will export
+   COLOUR and TYPE: paper #f4f2f2, ink #322e2e, black day bars, black primary, time badge colour chosen by the user (default #920025); 조선굵은명조 tight for titles and times, 조선굴림체 for details
+   LAYOUT: thin tool bar, setup row, then the board; columns swipe on phones */
+:root{color-scheme:light dark;--bg:light-dark(#e9e6e6,#141111);--ink:light-dark(#322e2e,#eeeaea);--mute:light-dark(#6f6868,#a59e9e);--line:light-dark(#d3cdcd,#3a3333);--panel:light-dark(#ffffff,#1f1a1a);--field:light-dark(#f4f2f2,#2a2424);--red:#920025;--pri:light-dark(#000,#f4f2f2);--on-pri:light-dark(#fff,#000);--badge:#920025;--badge-ink:#ffffff;--paper:#f4f2f2;--serif:"ChosunNM",serif;--sans:"ChosunGu",system-ui,sans-serif}
+:root[data-theme=light]{color-scheme:light}:root[data-theme=dark]{color-scheme:dark}
+*{box-sizing:border-box;min-width:0}
+body{margin:0;background:var(--bg);color:var(--ink);font:16px/1.55 var(--sans);overflow-x:clip}
+button,input,select{font:inherit;color:inherit}
+button{cursor:pointer}
+:focus-visible{outline:2px solid var(--ink);outline-offset:2px}
+.wrap{max-width:1180px;margin:0 auto;padding:16px max(4vw,14px) 80px}
+.bar{display:flex;flex-wrap:wrap;align-items:center;gap:10px 14px;margin-bottom:14px}
+.bar h1{font:400 22px/1.2 var(--serif);letter-spacing:-.04em;margin:0;margin-right:auto}
+.stat{font-size:14px;color:var(--mute);white-space:nowrap}
+.stat b{color:var(--ink);font-weight:700}
+.btn{min-height:44px;padding:0 16px;border-radius:0;border:1px solid var(--line);background:var(--panel);font-size:15px;white-space:nowrap}
+.btn.pri{background:var(--pri);border-color:var(--pri);color:var(--on-pri);font-weight:500}
+.btn.ghost{background:transparent}
+.btn.danger{color:#c4123f;border-color:currentColor;background:transparent}
+.btn:disabled{opacity:.45;cursor:not-allowed}
+.setup{display:grid;grid-template-columns:minmax(0,1.2fr) minmax(0,1fr) minmax(0,1fr) auto auto;gap:12px;background:var(--panel);border:1px solid var(--line);border-radius:0;padding:14px;margin-bottom:18px}
+.f{display:flex;flex-direction:column;gap:4px}
+.f span{font-size:13px;color:var(--mute)}
+.f input{min-height:44px;border:1px solid var(--line);border-radius:0;background:var(--field);padding:0 12px;font-size:16px;width:100%}
+.sw{display:flex;gap:6px;align-items:center;min-height:44px}
+.sw button{width:30px;height:30px;padding:0;border:1px solid rgba(0,0,0,.25);border-radius:0;position:relative}
+.sw button[aria-pressed=true]{outline:2px solid var(--ink);outline-offset:2px}
+.sw label{width:30px;height:30px;border:1px dashed var(--mute);display:grid;place-items:center;font-size:16px;color:var(--mute);cursor:pointer;position:relative;overflow:hidden}
+.sw label.on{outline:2px solid var(--ink);outline-offset:2px;border-style:solid}
+.sw input{position:absolute;inset:0;opacity:0;cursor:pointer;width:100%;height:100%}
+.sk{background:linear-gradient(90deg,#2a2525 25%,#423b3b 50%,#2a2525 75%) 0 0/200% 100%!important;border-color:#000}
+.sk-line{display:block;height:12px;background:linear-gradient(90deg,#e6e1e1 25%,#f4f0f0 50%,#e6e1e1 75%) 0 0/200% 100%;margin:0 10px}
+.sk-card{display:flex;flex-direction:column;gap:8px}.sk-card .shot{border:1.45px solid #000}
+.sk-card .tb{width:52px;height:23px}.sk-card .l1{width:70%}.sk-card .l2{width:50%;height:10px}
+@media(prefers-reduced-motion:no-preference){.sk,.sk-line{animation:shim 1.2s linear infinite}@keyframes shim{to{background-position:-200% 0}}}
+.errbar{display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;border:1px solid #c4123f;background:#fff4f6;color:#7a0b28;padding:8px 8px 8px 14px;margin-bottom:14px;font-size:14px}
+.errbar[hidden]{display:none}
+.retry{min-height:36px;padding:0 12px;border:1px solid currentColor;background:transparent;color:inherit;border-radius:0;font-size:14px;white-space:nowrap}
+.saveinfo .retry{margin-left:8px;color:#c4123f}
+.hint{grid-column:1/-1;font-size:13px;color:var(--mute);margin:-4px 0 0}
+.saveinfo{font-size:13px;color:var(--mute);white-space:nowrap;min-height:44px;display:flex;align-items:center}
+/* board */
+.board{background:var(--paper);color:#322e2e;padding:clamp(18px,4vw,48px) clamp(14px,4vw,44px) clamp(24px,4vw,48px);border-radius:0;box-shadow:0 1px 0 rgba(0,0,0,.06),0 18px 40px -24px rgba(0,0,0,.35)}
+.bhead{display:flex;justify-content:space-between;align-items:baseline;gap:12px 24px;flex-wrap:wrap;margin-bottom:clamp(14px,2.4vw,30px)}
+.bhead div{font:400 clamp(26px,4.6vw,52px)/1.05 var(--serif);letter-spacing:-.12em;white-space:nowrap}
+.cols{display:grid;grid-template-columns:repeat(var(--n),minmax(0,190px));gap:3px}
+.col{border:1px solid #000;background:#fff;padding-bottom:30px;display:flex;flex-direction:column;gap:30px;min-height:min(1125px,140vw)}
+.day{background:#000;color:#fff;height:60px;display:flex;align-items:center;justify-content:center;font:400 clamp(24px,2.8vw,34px)/1 var(--serif);letter-spacing:-.12em;margin-bottom:-30px}
+.card{position:relative;display:flex;flex-direction:column;gap:8px}
+.card.done .info{opacity:.5}.card.done .shot::before{content:"";position:absolute;inset:0;background:rgba(255,255,255,.5);z-index:1}.stamp{z-index:2}
+.shot{position:relative;aspect-ratio:600/338;border:1.45px solid #000;background:#1d1919;overflow:hidden;display:block;width:100%;padding:0}
+.shot img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover}
+.shot.empty{background:#1d1919 repeating-linear-gradient(90deg,transparent 0 10px,#f4f2f2 10px 16px,transparent 16px 26px) top/100% 7px no-repeat}
+.shot.empty::after{content:"";position:absolute;inset:auto 0 0;height:7px;background:inherit;background-position:bottom}
+.shot.empty>span:not(.stamp){position:absolute;inset:0;display:grid;place-items:center;color:#b9b1b1}.shot.empty svg{width:30px;height:30px}
+.stamp{position:absolute;left:50%;top:50%;width:55.8%;aspect-ratio:2.25;background:#151515;color:#fff;display:grid;place-items:center;font:400 clamp(22px,2.6vw,34px)/1 var(--serif);letter-spacing:-.12em;transform:translate(-50%,-50%) rotate(-9.84deg);pointer-events:none;opacity:1}
+.info{padding:0 10px;display:flex;flex-direction:column;gap:6px;text-align:left;background:none;border:0;cursor:pointer;color:#000}
+.time{align-self:flex-start;background:var(--badge);color:var(--badge-ink);font:400 23px/23px var(--serif);letter-spacing:-.12em;padding:0 calc(6px + .12em) 0 6px;height:23px;white-space:nowrap}
+.t1{font-size:14.5px;line-height:16.8px;word-break:keep-all;overflow-wrap:anywhere;-webkit-text-stroke:.35px currentColor}
+.t2{font-size:13.5px;line-height:16px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:100%;margin-top:-4px}
+.card.done .warn{margin:-2px 10px 0;font-size:12px;color:#c4123f;font-weight:500}
+.card.bad .shot{outline:2px solid #c4123f;outline-offset:2px}
+.add{position:relative;width:100%;margin:0;padding:0;border:0;outline:1.45px dashed #b8b0b0;outline-offset:-1.45px;background:transparent;color:#5a5252;border-radius:0;display:flex;flex-direction:column;gap:8px;font-size:14px}
+.add .ghost{visibility:hidden;display:flex;flex-direction:column;gap:8px}
+.add .ghost i{display:block;aspect-ratio:600/338}
+.add .ghost .info{cursor:default}
+.add .lab{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px}
+.add b{font-size:22px;font-weight:400;line-height:1;color:#000}
+.add small{font-size:12.5px;color:#7b7272}
+.add:hover{outline-color:#000}
+/* sheet */
+.scrim{position:fixed;inset:0;background:rgba(10,6,6,.45);display:none;z-index:20}
+.scrim.on{display:block}
+.sheet{position:fixed;z-index:21;right:0;top:0;bottom:0;width:min(440px,100%);background:var(--panel);color:var(--ink);display:none;flex-direction:column;box-shadow:-20px 0 50px -20px rgba(0,0,0,.4)}
+.sheet.on{display:flex}
+.sh{padding:16px 18px 12px;border-bottom:1px solid var(--line);display:flex;flex-direction:column;gap:12px}
+.sh-top{display:flex;align-items:center;gap:10px}
+.sh-top h2{margin:0;margin-right:auto;font:400 20px/1.2 var(--serif);letter-spacing:-.04em}
+.x{width:44px;height:44px;border-radius:0;border:0;background:var(--field);font-size:22px;line-height:1}
+.tm{display:flex;align-items:center;gap:6px}
+.tm input{width:96px;min-height:44px;text-align:center;font:400 20px var(--serif);border:1px solid var(--line);border-radius:0;background:var(--field);letter-spacing:-.04em}
+.tm button{min-width:44px;min-height:44px;border-radius:0;border:1px solid var(--line);background:transparent;font-size:14px}
+.tm label{font-size:15px;font-weight:700;color:var(--ink);margin-right:6px;white-space:nowrap}
+.err{font-size:13px;color:#c4123f;min-height:0}
+.search{min-height:46px;border:1px solid var(--line);border-radius:0;background:var(--field);padding:0 14px;font-size:16px;width:100%}
+.list{flex:1;overflow:auto;padding:4px 8px 24px;margin:0;list-style:none}
+.list li button{width:100%;display:grid;grid-template-columns:minmax(0,1fr) auto;gap:2px 12px;align-items:center;text-align:left;border:0;background:transparent;padding:10px 10px;border-radius:0;min-height:56px}
+.list li button:hover,.list li button.hl{background:var(--field)}
+.list .nm{font-weight:500;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.list .nm i{font-style:normal;color:var(--mute);font-weight:400}
+.list .meta{grid-row:2;font-size:13px;color:var(--mute);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.list .end{grid-row:1/3;grid-column:2;font:400 15px var(--serif);letter-spacing:-.03em;white-space:nowrap;text-align:right}
+.list .end small{display:block;font:400 11.5px var(--sans);color:var(--mute);letter-spacing:0}
+.list button:disabled{opacity:.38;cursor:not-allowed}
+.empty-l{padding:24px 12px;color:var(--mute);font-size:14px}
+.edit{padding:18px;display:flex;flex-direction:column;gap:18px;overflow:auto}
+.edit .shot{max-width:320px}
+.row{display:flex;flex-wrap:wrap;gap:8px;align-items:center}
+.lbl{font-size:13px;color:var(--mute);margin-bottom:6px}
+.chips{display:flex;flex-wrap:wrap;gap:6px}
+.chips button{min-height:40px;padding:0 12px;border-radius:0;border:1px solid var(--line);background:transparent;font-size:14px}
+.chips button[aria-pressed=true]{background:var(--ink);color:var(--panel);border-color:var(--ink)}
+.toast{position:fixed;left:50%;bottom:22px;transform:translateX(-50%);background:#1b1717;color:#fff;padding:10px 10px 10px 18px;border-radius:0;display:none;align-items:center;gap:12px;z-index:40;font-size:14px;max-width:calc(100% - 24px)}
+.toast.on{display:flex}
+.toast button{background:transparent;border:0;color:#ff8fa8;font-weight:700;min-height:36px;padding:0 10px}
+.dlg{position:fixed;inset:0;z-index:30;display:none;place-items:center;background:rgba(10,6,6,.5);padding:16px}
+.dlg.on{display:grid}
+.dlg>div{background:var(--panel);color:var(--ink);border-radius:0;padding:20px;max-width:480px;width:100%;display:flex;flex-direction:column;gap:14px}
+.dlg h3{margin:0;font:400 19px var(--serif)}
+.dlg p{margin:0;font-size:15px;color:var(--mute)}
+.dlg img{width:100%;border-radius:0;border:1px solid var(--line)}
+.vh{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0)}
+@media(max-width:760px){
+ .setup{grid-template-columns:minmax(0,1fr) minmax(0,1fr)}
+ .setup .f:first-child{grid-column:1/-1}
+ .setup .f:nth-child(4){grid-column:1/-1}
+ .cols{display:flex;overflow-x:auto;scroll-snap-type:x mandatory;gap:6px;margin:0 calc(-1*clamp(14px,4vw,44px));padding:0 clamp(14px,4vw,44px) 6px;scrollbar-width:thin}
+ .col{flex:0 0 min(76vw,300px);scroll-snap-align:center;min-height:0}
+ .bhead{flex-direction:column;gap:2px}
+ .sheet{top:auto;left:0;width:100%;height:min(86vh,720px);border-radius:0}
+ .stamp{font-size:30px}
+}
+@media(prefers-reduced-motion:no-preference){.card.new{animation:in .3s ease-out}@keyframes in{from{opacity:0;transform:translateY(6px)}}}
+</style>
+</head>
+<body>
+<div class="wrap">
+ <div class="bar">
+  <h1>상영시간표 만들기</h1>
+  <span class="stat" id="prog"></span>
+  <button class="btn ghost" id="bNew">새로 만들기</button>
+  <button class="btn ghost" id="bSet">쉬는 시간 <b id="gapLbl"></b></button>
+  <button class="btn pri" id="bExp">이미지 저장</button>
+ </div>
+ <form class="setup" id="setup" autocomplete="off">
+  <label class="f"><span>제목</span><input id="iTitle" maxlength="20"></label>
+  <label class="f"><span>시작일</span><input type="date" id="iStart"></label>
+  <label class="f"><span>종료일 (최대 5일)</span><input type="date" id="iEnd"></label>
+  <div class="f"><span>시간 박스 색</span><div class="sw" id="sw"></div></div>
+  <div class="f"><span>저장</span><span class="saveinfo" id="saveInfo">불러오는 중…</span></div>
+ </form>
+ <section class="board" id="board" aria-label="상영시간표 미리보기">
+  <div class="bhead"><div id="bTitle"></div><div id="bRange"></div></div>
+  <div class="errbar" id="errbar" role="alert" hidden><span id="errMsg"></span><button class="retry" id="errRetry">다시 시도</button></div>
+  <div class="cols" id="cols"></div>
+ </section>
+</div>
+
+<div class="scrim" id="scrim"></div>
+<aside class="sheet" id="sheet" role="dialog" aria-modal="true" aria-labelledby="shTitle"></aside>
+<div class="dlg" id="dlg" role="dialog" aria-modal="true"><div id="dlgBox"></div></div>
+<div class="toast" id="toast" role="status"><span id="toastMsg"></span><button id="toastBtn" hidden>되돌리기</button></div>
+<input type="file" accept="image/*" id="file" class="vh" tabindex="-1">
+
+<script>
+{
+const MOVIES=[[1,"마들렌",2003,118,"박광춘"],[2,"펄",2022,102,"타이 웨스트"],[3,"타락천사",1995,99,"왕가위"],[4,"옥자",2017,120,"봉준호"],[5,"고속도로 가족",2022,128,"이상문"],[6,"물에 빠진 나이프",2016,111,"야마토 유키"],[7,"아비정전",1990,100,"왕가위"],[8,"브링 잇 온",2000,98,"페이튼 리드"],[9,"해피 투게더",1997,96,"왕가위"],[10,"상견니",2022,107,"황천인"],[11,"어쩌면 우린 헤어졌는지 모른다",2023,103,"형슬우"],[12,"귀를 기울이면",1995,111,"콘도 요시후미"],[13,"불량공주 모모코",2004,102,"나카시마 테츠야"],[14,"다음 소희",2022,138,"정주리"],[15,"에놀라 홈즈",2020,123,"해리 브래드비어"],[16,"틱, 틱… 붐!",2021,115,"린마누엘 미란다"],[17,"왕의 남자",2005,119,"이준익"],[18,"꿈의 제인",2016,104,"조현훈"],[19,"레이니 데이 인 뉴욕",2019,92,"우디 앨런"],[20,"존 윅",2014,101,"채드 스타헬스키"],[21,"존 윅: 리로드",2017,122,"채드 스타헬스키"],[22,"존 윅 3: 파라벨룸",2019,131,"채드 스타헬스키"],[23,"존 윅 4",2023,169,"채드 스타헬스키"],[24,"리플리",1999,139,"안소니 밍겔라"],[25,"파수꾼",2011,117,"윤성현"],[26,"화양연화",2000,98,"왕가위"],[27,"나의 사랑 나의 신부",2014,111,"임찬상"],[28,"멘",2022,100,"알렉스 갈랜드"],[29,"너와 나",2023,118,"조현철"],[30,"중경삼림",1994,102,"왕가위"],[31,"캐빈 인 더 우즈",2012,95,"드류 고다드"],[32,"릴리 슈슈의 모든 것",2001,146,"이와이 슌지"],[33,"작은 아씨들",2019,135,"그레타 거윅"],[34,"로우",2016,99,"쥘리아 뒤쿠르노"],[35,"애프터썬",2022,102,"샬럿 웰스"],[36,"라라랜드",2016,128,"데이미언 셔젤"],[37,"나이브스 아웃",2019,130,"라이언 존슨"],[38,"월플라워",2012,103,"스티븐 크보스키"],[39,"사랑할 땐 누구나 최악이 된다",2021,128,"요아킴 트리에"],[40,"김씨표류기",2009,116,"이해준"],[41,"킬링 디어",2017,121,"요르고스 란티모스"],[42,"스파이더맨: 뉴 유니버스",2018,117,"밥 퍼시케티, 피터 램지, 로드니 로스먼"],[43,"킬 빌: 1부",2003,111,"쿠엔틴 타란티노"],[44,"킬 빌: 2부",2004,137,"쿠엔틴 타란티노"],[45,"베이비 드라이버",2017,113,"에드거 라이트"],[46,"펄프 픽션",1994,154,"쿠엔틴 타란티노"],[48,"오펜하이머",2023,180,"크리스토퍼 놀란"],[49,"대부",1972,175,"프랜시스 포드 코폴라"],[50,"보 이즈 어프레이드",2023,179,"아리 애스터"],[51,"노트북",2004,123,"닉 카사베츠"],[52,"러브 라이즈 블리딩",2024,104,"로즈 글래스"],[53,"팬텀 스레드",2017,130,"폴 토머스 앤더슨"],[54,"세븐",1995,127,"데이비드 핀처"],[55,"나비효과",2004,113,"에릭 브레스, J. 매키 그루버"],[56,"악마와의 토크쇼",2023,93,"콜린 케언스, 캐머런 케언스"],[57,"바빌론",2022,189,"데이미언 셔젤"],[58,"인터스텔라",2014,169,"크리스토퍼 놀란"],[59,"히든 피겨스",2016,127,"시어도어 멜피"],[60,"섹스 앤 더 시티",2008,145,"마이클 패트릭 킹"],[61,"마",2019,99,"테이트 테일러"],[62,"황해",2010,156,"나홍진"],[63,"겟 아웃",2017,104,"조던 필"],[64,"신세계",2013,134,"박훈정"],[65,"레드 드래곤",2002,124,"브렛 래트너"],[66,"살인의 추억",2003,132,"봉준호"],[67,"내부자들",2015,130,"우민호"],[68,"살인자의 기억법",2017,118,"원신연"],[69,"부당거래",2010,119,"류승완"],[70,"그는 당신에게 반하지 않았다",2009,129,"켄 콰피스"],[71,"브리짓 존스의 일기",2001,97,"샤론 맥과이어"],[72,"콘스탄틴",2005,121,"프랜시스 로런스"],[73,"테넷",2020,150,"크리스토퍼 놀란"],[74,"광해, 왕이 된 남자",2012,131,"추창민"],[75,"미스 페레그린과 이상한 아이들의 집",2016,127,"팀 버튼"],[76,"브리짓 존스의 베이비",2016,123,"샤론 맥과이어"],[77,"행복을 찾아서",2006,117,"가브리엘레 무치노"],[78,"범죄의 재구성",2004,116,"최동훈"],[79,"기생충",2019,132,"봉준호"],[80,"인셉션",2010,148,"크리스토퍼 놀란"],[81,"위플래쉬",2014,107,"데이미언 셔젤"],[82,"케빈에 대하여",2011,112,"린 램지"],[83,"싸움의 기술",2006,100,"신한솔"],[84,"이스케이프 룸",2019,100,"애덤 로비텔"],[85,"스펜서",2021,117,"파블로 라라인"],[86,"컨택트",2016,116,"드니 빌뇌브"],[87,"변호인",2013,127,"양우석"],[88,"아수라",2016,132,"김성수"],[89,"바다가 들린다",1993,72,"모치즈키 토모미"],[90,"연애 빠진 로맨스",2021,95,"정가영"],[91,"조 블랙의 사랑",1998,178,"마틴 브레스트"],[92,"스타 이즈 본",2018,136,"브래들리 쿠퍼"],[93,"줄무늬 파자마를 입은 소년",2008,94,"마크 허먼"],[94,"남자가 사랑할 때",2014,120,"한동욱"],[95,"어톤먼트",2007,123,"조 라이트"],[96,"여인의 향기",1992,156,"마틴 브레스트"],[97,"결혼 이야기",2019,137,"노아 바움백"],[98,"그렇게 아버지가 된다",2013,121,"고레에다 히로카즈"],[99,"나는 내일, 어제의 너와 만난다",2016,111,"미키 타카히로"],[100,"윤희에게",2019,105,"임대형"],[101,"라이언 일병 구하기",1998,169,"스티븐 스필버그"],[102,"목소리의 형태",2016,129,"야마다 나오코"],[103,"반딧불이의 묘",1988,89,"다카하타 이사오"],[104,"클래식",2003,132,"곽재용"],[105,"냉정과 열정 사이",2001,125,"나카에 이사무"],[106,"장고: 분노의 추적자",2012,165,"쿠엔틴 타란티노"],[107,"다크 나이트",2008,152,"크리스토퍼 놀란"],[108,"글래디에이터",2000,155,"리들리 스콧"],[109,"미나리",2020,115,"정이삭"],[110,"판의 미로: 오필리아와 세 개의 열쇠",2006,119,"기예르모 델 토로"],[111,"리틀 포레스트",2018,103,"임순례"],[112,"고양이의 보은",2002,75,"모리타 히로유키"],[113,"사도",2015,125,"이준익"],[114,"1987",2017,129,"장준환"],[115,"먹고 기도하고 사랑하라",2010,133,"라이언 머피"],[116,"더 킹: 헨리 5세",2019,140,"데이비드 미쇼"],[117,"올드보이",2003,120,"박찬욱"],[118,"포레스트 검프",1994,142,"로버트 저메키스"],[119,"이프 온리",2004,96,"길 정거"],[120,"사운드 오브 메탈",2019,120,"다리어스 마더"],[121,"핸섬가이즈",2024,101,"남동협"],[122,"에이리언",1979,117,"리들리 스콧"],[123,"프로메테우스",2012,124,"리들리 스콧"],[124,"경계선",2018,110,"알리 아바시"],[125,"비틀쥬스",1988,92,"팀 버튼"],[126,"마이너리티 리포트",2002,145,"스티븐 스필버그"],[127,"뷰티풀 보이",2018,120,"펠릭스 판그루닝언"],[128,"싱 스트리트",2016,106,"존 카니"],[129,"매드 맥스",1979,88,"조지 밀러"],[130,"매드 맥스: 분노의 도로",2015,120,"조지 밀러"],[131,"퓨리오사: 매드맥스 사가",2024,148,"조지 밀러"],[132,"웨이브스",2019,135,"트레이 에드워드 슐츠"],[133,"언더 더 실버 레이크",2018,139,"데이비드 로버트 미첼"],[134,"성스러운 거미",2022,118,"알리 아바시"],[135,"레인 맨",1988,133,"배리 레빈슨"],[136,"케이 팩스",2001,120,"이언 소프틀리"],[137,"조조 래빗",2019,108,"타이카 와이티티"],[138,"셔터 아일랜드",2010,138,"마틴 스코세이지"],[139,"바비",2023,114,"그레타 거윅"],[140,"에브리씽 에브리웨어 올 앳 원스",2022,139,"다니엘 콴, 다니엘 샤이너트"],[141,"콘클라베",2024,120,"에드워드 버거"],[142,"우리가 빛이라 상상하는 모든 것",2024,118,"파얄 카파디아"],[143,"듄",2021,155,"드니 빌뇌브"],[144,"유주얼 서스펙트",1995,106,"브라이언 싱어"],[145,"그린 마일",1999,189,"프랭크 다라본트"],[146,"추락의 해부",2023,151,"쥐스틴 트리에"],[147,"만약에 우리",2025,115,"김도영"],[148,"군체",2026,122,"연상호"],[149,"마이클",2026,127,"안톤 후쿠아"],[150,"씨너스: 죄인들",2025,137,"라이언 쿠글러"],[151,"시",2010,139,"이창동"],[152,"가능한 사랑",2026,164,"이창동"],[153,"유 캔 씨 에브리씽",2026,174,"네이선 필더, 랜스 오펜하임"],[154,"센티멘탈 밸류",2025,134,"요아킴 트리에"],[155,"공순이",2026,89,"유소영"],[156,"아테나",2022,99,"로맹 가브라스"],[157,"미쓰 홍당무",2008,100,"이경미"],[158,"뉴 오더",2020,88,"미셸 프랑코"],[159,"애프터 양",2021,96,"코고나다"],[160,"미 비포 유",2016,110,"테아 샤록"],[161,"폭설",2024,86,"윤수익"],[162,"맨체스터 바이 더 씨",2016,137,"케네스 로너건"]];
+const M={};for(const r of MOVIES)M[r[0]]={id:r[0],t:r[1],y:r[2],rt:r[3],d:r[4]};
+const $=s=>document.getElementById(s);
+const esc=s=>String(s).replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"})[c]);
+const WD=["일","월","화","수","목","금","토"];
+const pad=n=>String(n).padStart(2,"0");
+const hm=m=>{m=((m%1440)+1440)%1440;return pad(Math.floor(m/60))+":"+pad(m%60)};
+const todayISO=()=>{const d=new Date();return d.getFullYear()+"-"+pad(d.getMonth()+1)+"-"+pad(d.getDate())};
+const addDays=(iso,n)=>{const d=new Date(iso+"T00:00:00");d.setDate(d.getDate()+n);return d};
+const iso=d=>d.getFullYear()+"-"+pad(d.getMonth()+1)+"-"+pad(d.getDate());
+const uid=()=>Math.random().toString(36).slice(2,10);
+
+const LS="myShowtimes.v1",LSI="myShowtimes.img.v1";
+let S,IMG={},justAdded=null,loading=true,remotePending=false,uploading=null;
+function fresh(){const t=todayISO();return{badge:"#000000",title:(new Date().getMonth()+1)+"월 상영시간표",start:t,days:5,gap:10,entries:[],updated:0}}
+try{S=JSON.parse(localStorage.getItem(LS))||fresh()}catch(e){S=fresh()}
+try{IMG=JSON.parse(localStorage.getItem(LSI))||{}}catch(e){IMG={}}
+/* images live in IndexedDB (localStorage is too small for pictures) */
+let idbP=null;
+function idb(){if(!idbP)idbP=new Promise((res,rej)=>{try{const r=indexedDB.open("myShowtimes",1);r.onupgradeneeded=()=>r.result.createObjectStore("img");r.onsuccess=()=>res(r.result);r.onerror=()=>rej(r.error)}catch(e){rej(e)}});return idbP}
+async function idbDo(mode,fn,strict){try{const d=await idb();return await new Promise((res,rej)=>{const tx=d.transaction("img",mode),st=tx.objectStore("img");const q=fn(st);tx.oncomplete=()=>res(q&&q.result);tx.onerror=()=>rej(tx.error)})}catch(e){if(strict)throw e;return null}}
+const idbPut=(id,v)=>idbDo("readwrite",s=>s.put(v,id));
+const idbDel=id=>idbDo("readwrite",s=>s.delete(id));
+async function idbLoad(){const all=await idbDo("readonly",s=>{const out={};const c=s.openCursor();c.onsuccess=()=>{const k=c.result;if(k){out[k.key]=k.value;k.continue()}};return{get result(){return out}}},true);
+ const legacy=Object.keys(IMG);for(const k of legacy)await idbPut(k,IMG[k]);if(legacy.length)try{localStorage.removeItem(LSI)}catch(e){}
+ if(all){const used=new Set(S.entries.map(e=>e.img).filter(Boolean));for(const k of Object.keys(all)){if(used.has(k))IMG[k]=all[k];else idbDel(k)}}}
+
+/* ---------- time rules ---------- */
+const rt=e=>M[e.m]?M[e.m].rt:0;
+const dayList=(d,ex)=>S.entries.filter(e=>e.d===d&&e.id!==ex).sort((a,b)=>a.t-b.t);
+function check(d,t,len,ex,ignoreCount){
+ if(!(t>=0&&t<1440))return"자정 전(23:59까지)에 시작해야 해요";
+ const L=dayList(d,ex);
+ if(!ignoreCount&&L.length>=5)return"하루 최대 5편까지 넣을 수 있어요";
+ const g=S.gap;let lo=-1e9,hi=1e9,loWhy="",prev=null,next=null;
+ for(const e of L){if(e.t<=t)prev=e;else if(!next)next=e}
+ if(prev){lo=prev.t+rt(prev)+g;loWhy="앞 영화("+M[prev.m].t+")"}
+ else if(d>0){const p=dayList(d-1);if(p.length){const l=p[p.length-1];const v=l.t+rt(l)+g-1440;if(v>lo){lo=v;loWhy="전날 마지막 영화("+M[l.m].t+")"}}}
+ if(next)hi=next.t;else if(d<S.days-1){const n=dayList(d+1);if(n.length)hi=n[0].t+1440}
+ if(t<lo)return loWhy+"가 끝나고 쉬는 시간을 두면 "+hm(lo)+"부터 시작할 수 있어요";
+ if(t+len+g>hi)return"다음 영화("+hm(hi)+")와 겹쳐요";
+ return"";
+}
+function nextStart(d){
+ const L=dayList(d);
+ if(L.length){const l=L[L.length-1];return l.t+rt(l)+S.gap}
+ let t=600;
+ if(d>0){const p=dayList(d-1);if(p.length){const l=p[p.length-1];t=Math.max(t,l.t+rt(l)+S.gap-1440)}}
+ return t;
+}
+const endLabel=(t,len)=>{const e=t+len;return(e>=1440?"익일 ":"")+hm(e)};
+
+/* ---------- search ---------- */
+const CHO="ㄱㄲㄴㄷㄸㄹㅁㅂㅃㅅㅆㅇㅈㅉㅊㅋㅌㅍㅎ";
+const norm=s=>s.toLowerCase().replace(/[\s·:.,!?…'"()\-]/g,"");
+const cho=s=>[...s].map(c=>{const k=c.charCodeAt(0)-44032;return k>=0&&k<11172?CHO[Math.floor(k/588)]:c}).join("");
+for(const m of Object.values(M)){m.n=norm(m.t);m.c=cho(m.n);m.nd=norm(m.d);m.cd=cho(m.nd)}
+function find(q){
+ q=norm(q);const all=Object.values(M);
+ if(!q)return all.slice().sort((a,b)=>a.t.localeCompare(b.t,"ko"));
+ const isCho=/^[ㄱ-ㅎ]+$/.test(q);
+ const sc=m=>{if(m.n.startsWith(q))return 0;if(m.n.includes(q))return 1;if(isCho&&m.c.startsWith(q))return 2;if(isCho&&m.c.includes(q))return 3;if(m.nd.includes(q)||(isCho&&m.cd.includes(q)))return 4;return 9};
+ return all.map(m=>[sc(m),m]).filter(x=>x[0]<9).sort((a,b)=>a[0]-b[0]||a[1].t.localeCompare(b[1].t,"ko")).map(x=>x[1]);
+}
+
+/* ---------- badge colour ---------- */
+const SW=["#000000","#00cbe1","#e1a100"];
+const badge=()=>/^#[0-9a-f]{6}$/i.test(S.badge||"")?S.badge:"#000000";
+function badgeInk(){return"#ffffff"}
+function renderSw(){const c=badge();const custom=!SW.includes(c.toLowerCase());
+ $("sw").innerHTML=SW.map(s=>`<button type="button" data-c="${s}" style="background:${s}" aria-label="색 ${s}" aria-pressed="${s===c.toLowerCase()}"></button>`).join("")+`<label class="${custom?"on":""}" title="직접 고르기" style="${custom?"background:"+c:""}"><span aria-hidden="true">${custom?"":"+"}</span><input type="color" id="swIn" value="${c}" aria-label="시간 박스 색 직접 고르기"></label>`;
+ const b=$("board");b.style.setProperty("--badge",c);b.style.setProperty("--badge-ink",badgeInk(c))}
+$("sw").addEventListener("click",e=>{const b=e.target.closest("button[data-c]");if(!b)return;S.badge=b.dataset.c;changed()});
+let swT=0;$("sw").addEventListener("input",e=>{if(e.target.id!=="swIn")return;S.badge=e.target.value;const b=$("board");b.style.setProperty("--badge",S.badge);b.style.setProperty("--badge-ink",badgeInk(S.badge));clearTimeout(swT);swT=setTimeout(changed,300)});
+
+/* ---------- render ---------- */
+const dateOf=d=>addDays(S.start,d);
+const dayName=d=>{const x=dateOf(d);return x.getDate()+"일 ("+WD[x.getDay()]+")"};
+const rangeText=()=>{const a=dateOf(0),b=dateOf(S.days-1);return(a.getMonth()+1)+"월 "+a.getDate()+"일 ~ "+(b.getMonth()+1)+"월 "+b.getDate()+"일"};
+const ICON='<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M14 3H5a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-9"/><circle cx="9" cy="9" r="2"/><path d="M21 15l-5-5L5 21"/><path d="M19 2v6M16 5h6"/></svg>';
+function cardHTML(e){
+ const m=M[e.m];if(!m)return"";
+ const bad=check(e.d,e.t,m.rt,e.id,true);
+ const im=e.img&&IMG[e.img];
+ const sk=uploading===e.id||(e.img&&!im&&(loading||remotePending));
+ return`<div class="card${e.id===justAdded?" new":""}${e.done?" done":""}${bad?" bad":""}" data-id="${e.id}">
+  <button class="shot${sk?" sk":im?"":" empty"}" data-act="img" ${sk?'aria-busy="true"':""} aria-label="${esc(m.t)} 스틸컷 ${im?"바꾸기":"올리기"}">${im?`<img alt="" src="${im}">`:(e.done||sk)?"":`<span>${ICON}</span>`}${e.done?'<span class="stamp">Done</span>':""}</button>
+  <button class="info" data-act="edit" aria-label="${esc(m.t)} 편집"><span class="time">${hm(e.t)}</span><span class="t1">${esc(m.t)} (${m.y})</span><span class="t2">${m.rt}분 · ${esc(m.d)}</span></button>
+  ${bad?`<div class="warn">${esc(bad)}</div>`:""}
+ </div>`;
+}
+function render(){
+ $("iTitle").value!==S.title&&document.activeElement!==$("iTitle")&&($("iTitle").value=S.title);
+ $("iStart").value=S.start;$("iEnd").value=iso(dateOf(S.days-1));
+ $("iEnd").min=S.start;$("iEnd").max=iso(addDays(S.start,4));
+ $("bTitle").textContent=S.title||"제목";$("bRange").textContent=rangeText();
+ $("gapLbl").textContent=S.gap+"분";
+ if(document.activeElement!==$("swIn"))renderSw();
+ const tot=S.entries.length,dn=S.entries.filter(e=>e.done).length;
+ $("prog").innerHTML=tot?`관람 <b>${dn}</b> / ${tot}편`:"";
+ $("bExp").disabled=!tot;
+ const cols=$("cols");cols.style.setProperty("--n",S.days);
+ let h="";
+ for(let d=0;d<S.days;d++){
+  const L=dayList(d);
+  h+=`<div class="col" data-d="${d}"><div class="day">${dayName(d)}</div>${L.map(cardHTML).join("")}`;
+  if(remotePending&&!S.entries.length){h+=Array.from({length:d%2?2:3},()=>`<div class="sk-card" aria-hidden="true"><span class="shot sk"></span><span class="sk-line tb"></span><span class="sk-line l1"></span><span class="sk-line l2"></span></div>`).join("")+"</div>";continue}
+  if(L.length<5){const t=nextStart(d);h+=`<button class="add" data-act="add" data-d="${d}"><span class="ghost" aria-hidden="true"><i></i><span class="info"><span class="time">00:00</span><span class="t1">-</span><span class="t2">-</span></span></span><span class="lab"><b>+</b>영화 추가<small>${t<1440?"다음 시작 "+hm(t)+"부터":"시작 시간을 골라 추가"}</small></span></button>`}
+  h+="</div>";
+ }
+ cols.innerHTML=h;justAdded=null;
+}
+
+/* ---------- save ---------- */
+let db=null,me=null,saveT=0,dirty=false;
+function showErr(msg,fn){$("errMsg").textContent=msg;$("errbar").hidden=false;$("errRetry").onclick=()=>{$("errbar").hidden=true;fn()}}
+function hideErr(){$("errbar").hidden=true}
+function persistLocal(){try{localStorage.setItem(LS,JSON.stringify(S));return true}catch(e){return false}}
+function saveFail(msg,fn){$("saveInfo").innerHTML="";$("saveInfo").append(msg);const b=document.createElement("button");b.className="retry";b.textContent="다시 시도";b.onclick=fn;$("saveInfo").append(b)}
+function changed(){S.updated=Date.now();const ok=persistLocal();render();dirty=true;clearTimeout(saveT);saveT=setTimeout(pushRemote,700);if(!ok&&!db){saveFail("저장하지 못했어요",()=>{if(persistLocal())setInfo("내 기기에 저장돼요")});return}setInfo(db?"저장 중…":"내 기기에 저장돼요")}
+function setInfo(t){$("saveInfo").textContent=t}
+const stateRef=()=>db.doc("data/users/"+me+"/schedule");
+let writing=false;
+async function pushRemote(){
+ if(!db||!dirty)return;if(writing){saveT=setTimeout(pushRemote,500);return}
+ writing=true;dirty=false;
+ try{await stateRef().set(JSON.parse(JSON.stringify(S)));setInfo("내 계정에 저장돼요")}
+ catch(e){writing=false;if(e&&e.code==="invalid_argument"){db=null;setInfo("내 기기에 저장돼요");return}dirty=true;saveFail("계정에 저장하지 못했어요",()=>{setInfo("저장 중…");pushRemote()});return}
+ writing=false;
+}
+async function putImg(id,data){await idbPut(id,data);if(!db)return;try{await stateRef().collection("img").doc(id).set({d:data})}catch(e){}}
+async function delImg(id){delete IMG[id];idbDel(id);if(db)try{await stateRef().collection("img").doc(id).delete()}catch(e){}}
+async function initRemote(){
+ if(!window.claude||!claude.use){setInfo("내 기기에 저장돼요");return}
+ const timer=setTimeout(()=>setInfo("내 기기에 저장돼요"),10000);
+ try{
+  const [d,u]=await Promise.all([claude.use("db"),claude.use("user")]);
+  me=u&&await u.id();
+  if(!d||!me){clearTimeout(timer);setInfo("내 기기에 저장돼요");return}
+  db=d;remotePending=true;render();
+  let snap;try{snap=await stateRef().get()}finally{remotePending=false}clearTimeout(timer);
+  if(snap.exists){const r=snap.data();if((r.updated||0)>(S.updated||0)){S=Object.assign(fresh(),JSON.parse(JSON.stringify(r)))}else if((S.updated||0)>(r.updated||0)){dirty=true;pushRemote()}}
+  else if(S.entries.length||S.updated){dirty=true;pushRemote()}
+  for(const e of S.entries){if(e.img&&!IMG[e.img]){try{const s=await stateRef().collection("img").doc(e.img).get();if(s.exists){IMG[e.img]=s.data().d;idbPut(e.img,IMG[e.img])}}catch(x){}}
+   else if(e.img&&IMG[e.img]&&!snap.exists){putImg(e.img,IMG[e.img])}}
+  persistLocal();render();setInfo("내 계정에 저장돼요");
+ }catch(e){clearTimeout(timer);remotePending=false;render();if(db){showErr("계정에 저장된 시간표를 불러오지 못했어요.",()=>{db=null;initRemote()})}db=null;setInfo("내 기기에 저장돼요")}
+}
+
+/* ---------- toast ---------- */
+let tT=0,undoFn=null;
+function toast(msg,undo,label){$("toastMsg").textContent=msg;undoFn=undo||null;$("toastBtn").hidden=!undo;$("toastBtn").textContent=label||"되돌리기";$("toast").classList.add("on");clearTimeout(tT);tT=setTimeout(()=>$("toast").classList.remove("on"),undo?6000:2600)}
+$("toastBtn").onclick=()=>{if(undoFn)undoFn();undoFn=null;$("toast").classList.remove("on")};
+
+/* ---------- sheet ---------- */
+let mode=null,lastFocus=null;
+const sheet=$("sheet");
+function openSheet(html){lastFocus=document.activeElement;sheet.innerHTML=html;sheet.classList.add("on");$("scrim").classList.add("on")}
+function closeSheet(){sheet.classList.remove("on");$("scrim").classList.remove("on");mode=null;if(lastFocus&&document.body.contains(lastFocus))lastFocus.focus()}
+$("scrim").onclick=closeSheet;
+document.addEventListener("keydown",e=>{if(e.key==="Escape"){if($("dlg").classList.contains("on"))closeDlg();else if(mode)closeSheet()}});
+function parseTime(s){s=String(s).trim().replace(/[^0-9:]/g,"");let h,m;if(s.includes(":")){[h,m]=s.split(":").map(Number)}else if(s.length<=2){h=+s;m=0}else{h=+s.slice(0,-2);m=+s.slice(-2)}if(!(h>=0&&h<24&&m>=0&&m<60))return null;return h*60+m}
+const timeCtl=(t,lab)=>`<div class="tm"><label for="tIn">${lab}</label><button type="button" data-st="-15">−15</button><button type="button" data-st="-5">−5</button><input id="tIn" inputmode="numeric" value="${hm(t)}" aria-label="시작 시간"><button type="button" data-st="5">+5</button><button type="button" data-st="15">+15</button></div>`;
+function bindTime(on){
+ const inp=$("tIn");
+ sheet.querySelectorAll("[data-st]").forEach(b=>b.onclick=()=>{const v=parseTime(inp.value);if(v==null)return;let n=v+ +b.dataset.st;n=Math.max(0,Math.min(1439,n));inp.value=hm(n);on(n)});
+ inp.oninput=()=>{const v=parseTime(inp.value);on(v)};
+ inp.onblur=()=>{const v=parseTime(inp.value);if(v!=null)inp.value=hm(v)};
+}
+
+/* add / replace */
+function openAdd(d,replaceId){
+ const rep=replaceId&&S.entries.find(e=>e.id===replaceId);
+ mode={k:rep?"rep":"add",d:rep?rep.d:d,t:rep?rep.t:Math.min(nextStart(d),1439),id:replaceId,q:"",hl:0};
+ if(!rep&&nextStart(d)>=1440)mode.t=600;
+ openSheet(`<div class="sh"><div class="sh-top"><h2 id="shTitle">${dayName(mode.d)} ${rep?"영화 바꾸기":"영화 추가"}</h2><button class="x" id="shX" aria-label="닫기">×</button></div>
+  ${timeCtl(mode.t,"시작 시간")}<div class="err" id="tErr"></div>
+  <input class="search" id="q" type="search" placeholder="제목·감독·초성으로 검색 (예: ㅇㅍㅌ)" aria-label="영화 검색" autocomplete="off"></div>
+  <ul class="list" id="res" role="listbox" aria-label="검색 결과"></ul>`);
+ $("shX").onclick=closeSheet;
+ bindTime(v=>{mode.t=v;listRes()});
+ $("q").oninput=e=>{mode.q=e.target.value;mode.hl=0;listRes()};
+ $("q").onkeydown=e=>{const bs=[...$("res").querySelectorAll("button:not(:disabled)")];if(e.key==="ArrowDown"){e.preventDefault();mode.hl=Math.min(mode.hl+1,bs.length-1);hl(bs)}else if(e.key==="ArrowUp"){e.preventDefault();mode.hl=Math.max(mode.hl-1,0);hl(bs)}else if(e.key==="Enter"){e.preventDefault();if(bs[mode.hl])bs[mode.hl].click()}};
+ listRes();
+ if(matchMedia("(min-width:761px)").matches)$("q").focus();
+}
+function hl(bs){bs.forEach((b,i)=>b.classList.toggle("hl",i===mode.hl));if(bs[mode.hl])bs[mode.hl].scrollIntoView({block:"nearest"})}
+function listRes(){
+ const t=mode.t,ex=mode.k==="rep"?mode.id:null;
+ $("tErr").textContent=t==null?"시간을 13:30 또는 1330처럼 입력하세요":"";
+ const r=find(mode.q).slice(0,120);
+ if(!r.length){$("res").innerHTML=`<li class="empty-l">찾는 영화가 없어요. 다른 글자로 검색해 보세요.</li>`;return}
+ let firstErr="";
+ $("res").innerHTML=r.map(m=>{const why=t==null?"시간 확인":check(mode.d,t,m.rt,ex);if(why&&!firstErr)firstErr=why;
+  return`<li><button data-m="${m.id}" ${why?`disabled title="${esc(why)}"`:""}><span class="nm">${esc(m.t)} <i>(${m.y})</i></span><span class="meta">${m.rt}분 · ${esc(m.d)}</span><span class="end">${t==null?"":"→ "+endLabel(t,m.rt)}<small>${why?"안 들어가요":"종료"}</small></span></button></li>`}).join("");
+ const allBad=r.every(m=>t==null||check(mode.d,t,m.rt,ex));
+ if(allBad&&t!=null)$("tErr").textContent=firstErr;
+ else if(t!=null&&r.some(m=>check(mode.d,t,m.rt,ex)))$("tErr").textContent="흐린 영화는 이 시간에 넣으면 다음 영화와 겹쳐요";
+ $("res").querySelectorAll("button[data-m]").forEach(b=>b.onclick=()=>pick(+b.dataset.m));
+ hl([...$("res").querySelectorAll("button:not(:disabled)")]);
+}
+function pick(mid){
+ const m=M[mid];
+ if(mode.k==="rep"){const e=S.entries.find(x=>x.id===mode.id);e.m=mid;e.t=mode.t;changed();toast(m.t+"(으)로 바꿨어요");closeSheet();return}
+ justAdded=uid();S.entries.push({id:justAdded,d:mode.d,m:mid,t:mode.t,done:false});
+ changed();
+ const n=nextStart(mode.d),cnt=dayList(mode.d).length;
+ if(cnt>=5){toast(dayName(mode.d)+" 5편을 다 채웠어요");closeSheet();return}
+ if(n>=1440){toast(m.t+" 추가 · 마지막 상영이 자정 넘어 끝나요");closeSheet();return}
+ toast(m.t+" 추가 · 종료 "+endLabel(mode.t,m.rt));
+ mode.t=n;mode.q="";$("tIn").value=hm(n);$("q").value="";$("shTitle").textContent=dayName(mode.d)+" 영화 추가 ("+cnt+"/5)";
+ listRes();$("q").focus();
+}
+
+/* edit */
+function openEdit(id){
+ const e=S.entries.find(x=>x.id===id);if(!e)return;const m=M[e.m];
+ mode={k:"edit",id,d:e.d,t:e.t};
+ const im=e.img&&IMG[e.img];
+ openSheet(`<div class="sh"><div class="sh-top"><h2 id="shTitle">${esc(m.t)} <span style="font:400 15px var(--sans);color:var(--mute)">(${m.y})</span></h2><button class="x" id="shX" aria-label="닫기">×</button></div><div style="font-size:14px;color:var(--mute)">${m.rt}분 · ${esc(m.d)}</div></div>
+ <div class="edit">
+  <div><div class="lbl">스틸컷</div><button class="shot${im?"":" empty"}" id="eImg" aria-label="스틸컷 올리기">${im?`<img alt="" src="${im}">`:`<span>${ICON}</span>`}</button>${im?`<div class="row" style="margin-top:8px"><button class="btn ghost" id="eImgDel">이미지 지우기</button></div>`:""}</div>
+  <div><div class="lbl">날짜</div><div class="chips" id="eDays">${Array.from({length:S.days},(_,d)=>`<button data-d="${d}" aria-pressed="${d===e.d}">${dayName(d)}</button>`).join("")}</div></div>
+  <div>${timeCtl(e.t,"시작 시간")}<div class="err" id="tErr" style="margin-top:6px"></div><div id="eEnd" style="font-size:14px;color:var(--mute);margin-top:4px"></div></div>
+  <div class="row"><button class="btn pri" id="eSave">변경 저장</button><button class="btn" id="eDone">${e.done?"다 봤어요 취소":"다 봤어요"}</button></div>
+  <div class="row"><button class="btn ghost" id="eRep">다른 영화로 바꾸기</button><button class="btn danger" id="eDel">삭제</button></div>
+ </div>`);
+ $("shX").onclick=closeSheet;
+ const upd=()=>{const why=mode.t==null?"시간을 13:30 또는 1330처럼 입력하세요":check(mode.d,mode.t,m.rt,id,mode.d===e.d);$("tErr").textContent=why;$("eSave").disabled=!!why||(mode.d===e.d&&mode.t===e.t);$("eEnd").textContent=mode.t==null?"":"종료 "+endLabel(mode.t,m.rt)};
+ bindTime(v=>{mode.t=v;upd()});
+ $("eDays").querySelectorAll("button").forEach(b=>b.onclick=()=>{mode.d=+b.dataset.d;$("eDays").querySelectorAll("button").forEach(x=>x.setAttribute("aria-pressed",x===b));upd()});
+ $("eSave").onclick=()=>{e.d=mode.d;e.t=mode.t;changed();toast("시간을 바꿨어요");closeSheet()};
+ $("eDone").onclick=()=>{toggleDone(id);closeSheet()};
+ $("eRep").onclick=()=>{closeSheet();openAdd(e.d,id)};
+ $("eDel").onclick=()=>{const i=S.entries.indexOf(e);S.entries.splice(i,1);changed();closeSheet();toast(m.t+" 삭제했어요",()=>{S.entries.push(e);changed()})};
+ $("eImg").onclick=()=>pickImage(id);
+ if($("eImgDel"))$("eImgDel").onclick=()=>{const old=e.img;e.img=null;changed();delImg(old);openEdit(id)};
+ upd();
+}
+function toggleDone(id){const e=S.entries.find(x=>x.id===id);if(!e)return;e.done=!e.done;changed();if(e.done)toast(M[e.m].t+" 관람 완료!")}
+
+/* images */
+let imgFor=null;
+function pickImage(id){imgFor=id;$("file").value="";$("file").click()}
+$("file").onchange=()=>{const f=$("file").files[0];if(f&&imgFor)processImage(f,imgFor)};
+async function processImage(f,forId){
+ imgFor=forId;uploading=forId;render();
+ try{
+  const url=URL.createObjectURL(f);const im=new Image();im.src=url;await im.decode();
+  const W=640,H=Math.round(640*338/600),c=document.createElement("canvas");c.width=W;c.height=H;
+  const x=c.getContext("2d"),r=Math.max(W/im.naturalWidth,H/im.naturalHeight),w=im.naturalWidth*r,h=im.naturalHeight*r;
+  x.drawImage(im,(W-w)/2,(H-h)/2,w,h);URL.revokeObjectURL(url);
+  const data=c.toDataURL("image/jpeg",.82);
+  const e=S.entries.find(z=>z.id===forId);if(!e){uploading=null;render();return}
+  const old=e.img;const nid=uid();IMG[nid]=data;e.img=nid;changed();await putImg(nid,data);if(old)delImg(old);
+  if(mode&&mode.k==="edit"&&mode.id===e.id)openEdit(e.id);
+  uploading=null;render();toast("스틸컷을 넣었어요");
+ }catch(err){uploading=null;render();toast("이미지를 넣지 못했어요",()=>processImage(f,forId),"다시 시도")}
+}
+
+/* board clicks */
+$("cols").addEventListener("click",ev=>{
+ const b=ev.target.closest("[data-act]");if(!b)return;
+ const card=b.closest(".card"),id=card&&card.dataset.id;
+ if(b.dataset.act==="add")openAdd(+b.dataset.d);
+ else if(b.dataset.act==="done")toggleDone(id);
+ else if(b.dataset.act==="edit")openEdit(id);
+ else if(b.dataset.act==="img"){const e=S.entries.find(x=>x.id===id);if(e&&e.img)openEdit(id);else pickImage(id)}
+});
+
+/* setup */
+$("setup").onsubmit=e=>e.preventDefault();
+let titleT=0;
+$("iTitle").oninput=e=>{S.title=e.target.value;$("bTitle").textContent=S.title||"제목";clearTimeout(titleT);titleT=setTimeout(changed,500)};
+$("iStart").onchange=e=>{if(!e.target.value)return;S.start=e.target.value;changed()};
+$("iEnd").onchange=e=>{
+ if(!e.target.value)return;
+ let n=Math.round((new Date(e.target.value+"T00:00:00")-new Date(S.start+"T00:00:00"))/864e5)+1;
+ if(n<1){toast("종료일은 시작일 이후여야 해요");render();return}
+ if(n>5){n=5;toast("기간은 최대 5일이에요")}
+ const lost=S.entries.filter(x=>x.d>=n);
+ if(lost.length){dialog("기간 줄이기",`빠지는 날짜에 있는 영화 ${lost.length}편도 함께 지워져요.`,"줄이기",()=>{S.entries=S.entries.filter(x=>x.d<n);S.days=n;changed()},render);return}
+ S.days=n;changed();
+};
+
+/* dialog */
+let dlgCancel=null;
+function dialog(t,p,ok,onOk,onCancel,extra){
+ dlgCancel=onCancel||null;
+ $("dlgBox").innerHTML=`<h3>${t}</h3><p>${p}</p>${extra||""}<div class="row" style="justify-content:flex-end"><button class="btn ghost" id="dNo">${ok?"취소":"닫기"}</button>${ok?`<button class="btn pri" id="dOk">${ok}</button>`:""}</div>`;
+ $("dlg").classList.add("on");
+ $("dNo").onclick=closeDlg;if(ok)$("dOk").onclick=()=>{$("dlg").classList.remove("on");onOk()};
+ ($("dOk")||$("dNo")).focus();
+}
+function closeDlg(){$("dlg").classList.remove("on");if(dlgCancel)dlgCancel();dlgCancel=null}
+
+$("bNew").onclick=()=>{
+ const go=()=>{const prev=JSON.parse(JSON.stringify(S));const keep={gap:S.gap,badge:S.badge};S=Object.assign(fresh(),keep);closeSheet();changed();
+  toast("새 시간표를 시작했어요",()=>{S=prev;changed()})};
+ if(!S.entries.length){go();return}
+ dialog("새로 만들기",`지금 시간표의 영화 ${S.entries.length}편이 지워져요.<br>쉬는 시간과 시간 박스 색은 그대로 유지돼요.`,"새로 만들기",go);
+};
+$("bSet").onclick=()=>{
+ dialog("쉬는 시간","영화가 끝나는 시간과 다음 영화 시작 시간이<br>겹치지 않게 비워 두는 시간이에요.","적용",()=>{const v=parseInt($("gapIn").value,10);if(v>=0&&v<=180){S.gap=v;changed();toast("쉬는 시간 "+v+"분")}else toast("0~180분 사이로 입력하세요")},null,
+ `<label class="f"><span>분</span><input id="gapIn" type="number" min="0" max="180" step="5" inputmode="numeric" value="${S.gap}"></label>`);
+ setTimeout(()=>$("gapIn").select(),0);
+};
+
+/* ---------- export ---------- */
+function loadImg(src){return new Promise(r=>{const i=new Image();i.onload=()=>r(i);i.onerror=()=>r(null);i.src=src})}
+function fitText(x,s,max){if(x.measureText(s).width<=max)return s;while(s.length>1&&x.measureText(s+"…").width>max)s=s.slice(0,-1);return s+"…"}
+function wrap(x,s,max,maxLines){const words=s.split(" "),out=[];let cur="";
+ const push=w=>{if(x.measureText(w).width<=max)return w;let part="";for(const ch of w){if(x.measureText(part+ch).width>max){out.push(part);part=ch}else part+=ch}return part};
+ for(const wd of words){const tryS=cur?cur+" "+wd:wd;if(x.measureText(tryS).width<=max)cur=tryS;else{if(cur)out.push(cur);cur=push(wd)}}
+ if(cur)out.push(cur);
+ if(out.length>maxLines){const keep=out.slice(0,maxLines);keep[maxLines-1]=fitText(x,out.slice(maxLines-1).join(" "),max);return keep}
+ return out}
+function ls(x,v){try{x.letterSpacing=v}catch(e){}}
+async function drawPoster(){
+ const W=1080,H=1350,sc=2,c=document.createElement("canvas");c.width=W*sc;c.height=H*sc;
+ const x=c.getContext("2d");x.scale(sc,sc);
+ const texts=S.title+rangeText()+Array.from({length:S.days},(_,d)=>dayName(d)).join("")+"0123456789:Done()~월일…";
+ const body=S.entries.map(e=>M[e.m].t+M[e.m].d).join("")+"분·0123456789()…";
+ await Promise.all([document.fonts.load('400 52px "ChosunNM", serif',texts),document.fonts.load('400 14px "ChosunGu", sans-serif',body)]).catch(()=>{});
+ x.fillStyle="#f4f2f2";x.fillRect(0,0,W,H);
+ x.fillStyle="#322e2e";x.font='400 52px "ChosunNM", serif';ls(x,"-6.25px");x.textBaseline="top";
+ x.textAlign="left";x.fillText(S.title||"제목",56.67,60);x.textAlign="right";x.fillText(rangeText(),1022.24,60);
+ const X=[60,253,445,638,830],CW=[190,189,190,189,190],top=147,imgH=106.4,LH=16.8,base=176.73;
+ x.font='400 14.46px "ChosunGu", sans-serif';ls(x,"0px");
+ const lay=[];let colH=1125.66;
+ for(let d=0;d<S.days;d++){const L=dayList(d).map(e=>{const m=M[e.m];const lines=wrap(x,m.t+" ("+m.y+")",CW[d]-20,2);return{e,m,lines,h:base+(lines.length-1)*LH}});lay.push(L);
+  const need=60+L.reduce((s,c)=>s+c.h,0)+30*Math.max(0,L.length-1)+60;if(need>colH)colH=need}
+ colH=Math.min(colH,H-top-20);
+ for(let d=0;d<S.days;d++){
+  const cx=X[d],w=CW[d];
+  x.fillStyle="#fff";x.fillRect(cx,top,w,colH);
+  x.fillStyle="#000";x.fillRect(cx,top,w,60);
+  x.fillStyle="#fff";x.font='400 34.7px "ChosunNM", serif';ls(x,"-4.16px");x.textAlign="center";x.textBaseline="middle";x.fillText(dayName(d),cx+w/2,top+31);
+  let y=top+60;
+  for(const {e,m,lines,h} of lay[d]){
+   const src=e.img&&IMG[e.img],im=src&&await loadImg(src);
+   if(im){const r=Math.max(w/im.width,imgH/im.height),iw=im.width*r,ih=im.height*r;x.save();x.beginPath();x.rect(cx,y,w,imgH);x.clip();x.drawImage(im,cx+(w-iw)/2,y+(imgH-ih)/2,iw,ih);x.restore()}
+   else{x.fillStyle="#1d1919";x.fillRect(cx,y,w,imgH);x.fillStyle="#f4f2f2";for(let p=cx+10;p<cx+w-6;p+=26){x.fillRect(p,y+1,6,5);x.fillRect(p,y+imgH-6,6,5)}}
+   if(e.done){x.fillStyle="rgba(255,255,255,.5)";x.fillRect(cx,y,w,imgH)}
+   x.strokeStyle="#000";x.lineWidth=1.446;x.strokeRect(cx+.72,y+.72,w-1.45,imgH-1.45);
+   x.globalAlpha=e.done?.5:1;
+   const iy=y+imgH+8;
+   x.font='400 23.1px "ChosunNM", serif';ls(x,"-2.78px");x.textAlign="left";x.textBaseline="alphabetic";
+   const tm=x.measureText(hm(e.t)),gw=tm.actualBoundingBoxLeft+tm.actualBoundingBoxRight,bw=Math.max(52.05,gw+12);
+   x.fillStyle=badge();x.fillRect(cx+10,iy,bw,23.1);
+   const gh=tm.actualBoundingBoxAscent+tm.actualBoundingBoxDescent;
+   x.fillStyle=badgeInk(badge());x.fillText(hm(e.t),cx+10+(bw-gw)/2+tm.actualBoundingBoxLeft,iy+(23.1-gh)/2+tm.actualBoundingBoxAscent);
+   x.fillStyle="#000";x.strokeStyle="#000";x.textBaseline="top";ls(x,"0px");
+   x.font='400 14.46px "ChosunGu", sans-serif';x.lineWidth=.6;x.lineJoin="round";
+   lines.forEach((s,i)=>{x.strokeText(s,cx+10,iy+23.1+6+i*LH);x.fillText(s,cx+10,iy+23.1+6+i*LH)});
+   x.font='400 13.46px "ChosunGu", sans-serif';x.fillText(fitText(x,m.rt+"분 · "+m.d,w-20),cx+10,iy+23.1+6+lines.length*LH+2);
+   x.globalAlpha=1;
+   if(e.done){x.save();x.translate(cx+w/2,y+imgH/2);x.rotate(-9.84*Math.PI/180);x.fillStyle="#151515";x.fillRect(-52.5,-21.5,105,43);x.fillStyle="#fff";x.font='400 34.7px "ChosunNM", serif';ls(x,"-4.16px");x.textAlign="left";x.textBaseline="alphabetic";const dm=x.measureText("Done"),dw=dm.actualBoundingBoxLeft+dm.actualBoundingBoxRight,dh=dm.actualBoundingBoxAscent+dm.actualBoundingBoxDescent;x.fillText("Done",-dw/2+dm.actualBoundingBoxLeft,-dh/2+dm.actualBoundingBoxAscent);x.restore()}
+   y+=h+30;
+  }
+  x.strokeStyle="#000";x.lineWidth=1;x.strokeRect(cx+.5,top+.5,w-1,colH-1);
+ }
+ return c;
+}
+$("bExp").onclick=async()=>{
+ const b=$("bExp");if(b.getAttribute("aria-busy")==="true")return;b.disabled=true;b.setAttribute("aria-busy","true");b.textContent="만드는 중…";
+ try{
+  const c=await drawPoster();
+  const blob=await new Promise(r=>c.toBlob(r,"image/png"));
+  const name=(S.title||"상영시간표").replace(/[\\/:*?"<>|]/g,"")+"_"+S.start+".png";
+  let dl=null;try{dl=window.claude&&await claude.use("downloads")}catch(e){}
+  let ok=false;
+  if(dl){try{await dl.save({filename:name,data:blob});ok=true;toast("이미지를 저장했어요")}catch(e){if(e&&e.code==="declined"){ok=true}}}
+  if(!ok&&!window.claude){const a=document.createElement("a");a.href=URL.createObjectURL(blob);a.download=name;document.body.appendChild(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(a.href),4000);ok=true;toast("이미지를 저장했어요")}
+  if(!ok){const u=c.toDataURL("image/png");dialog("이미지 저장","이미지를 길게 누르거나 오른쪽 클릭해서 저장하세요.","",null,null,`<img src="${u}" alt="상영시간표 이미지">`)}
+ }catch(e){toast("이미지를 만들지 못했어요",()=>$("bExp").click(),"다시 시도")}
+ b.disabled=!S.entries.length;b.removeAttribute("aria-busy");b.textContent="이미지 저장";
+};
+
+render();
+function loadImages(){loading=true;render();idbLoad().then(()=>{loading=false;hideErr();render()}).catch(()=>{loading=false;render();showErr("저장된 스틸컷을 불러오지 못했어요.",loadImages)})}
+loadImages();
+setInfo("내 기기에 저장돼요");
+initRemote();
+}
+</script>
+</body>
+</html>
